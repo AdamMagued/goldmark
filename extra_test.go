@@ -279,3 +279,65 @@ func TestDangerousURLWithReferences(t *testing.T) {
 		t.Error("Dangerous image should not be rendered:\n" + string(testutil.DiffPretty(expected, b.Bytes())))
 	}
 }
+
+func TestIndentedCodeBlockTabsInBlankLines(t *testing.T) {
+	markdown := New(WithRendererOptions(
+		html.WithXHTML(),
+	))
+
+	tests := []struct {
+		name     string
+		source   string
+		expected string
+	}{
+		{
+			name:     "space and tab in blank line",
+			source:   "    a\n \t\n    b\n",
+			expected: "<pre><code>a\n\nb\n</code></pre>\n",
+		},
+		{
+			name:     "two spaces and tab in blank line",
+			source:   "    a\n  \t\n    b\n",
+			expected: "<pre><code>a\n\nb\n</code></pre>\n",
+		},
+		{
+			name:     "three spaces and tab in blank line",
+			source:   "    a\n   \t\n    b\n",
+			expected: "<pre><code>a\n\nb\n</code></pre>\n",
+		},
+		{
+			name:     "two spaces, tab, and two spaces in blank line",
+			source:   "    a\n  \t  \n    b\n",
+			expected: "<pre><code>a\n  \nb\n</code></pre>\n",
+		},
+		{
+			name:     "blockquote with tab in blank line",
+			source:   ">     a\n> \t  \n>     b\n",
+			expected: "<blockquote>\n<pre><code>a\n\nb\n</code></pre>\n</blockquote>\n",
+		},
+		{
+			name:     "tab in blank line",
+			source:   "    a\n\t\n    b\n",
+			expected: "<pre><code>a\n\nb\n</code></pre>\n",
+		},
+		{
+			name:     "two tabs in blank line",
+			source:   "    a\n\t\t\n    b\n",
+			expected: "<pre><code>a\n\t\nb\n</code></pre>\n",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var b bytes.Buffer
+			if err := markdown.Convert([]byte(tc.source), &b); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if b.String() != tc.expected {
+				t.Errorf("got %q, want %q", b.String(), tc.expected)
+			}
+		})
+	}
+}
+
