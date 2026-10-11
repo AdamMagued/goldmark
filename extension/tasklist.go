@@ -128,11 +128,40 @@ func (s *taskListItemParser) CloseBlock(_ gast.Node, _ parser.Context) {
 type taskListItemHTMLRendererConfig struct {
 	XHTML              bool
 	IsInTightBlockFunc html.IsInTightBlockFunc
+	WrapLabel          bool
 }
 
 // TaskListItemHTMLRendererOption represents an option for configuring the task list item HTML renderer.
 type TaskListItemHTMLRendererOption interface {
 	applyTaskListItemHTMLRendererOption(*taskListItemHTMLRendererConfig)
+}
+
+type withTaskListItemWrapLabel struct {
+	value bool
+}
+
+func (o *withTaskListItemWrapLabel) applyTaskListItemHTMLRendererOption(c *taskListItemHTMLRendererConfig) {
+	c.WrapLabel = o.value
+}
+
+// WithTaskListItemWrapLabel is a functional option that indicates whether checkboxes and
+// task list item texts are wrapped in <label> elements to satisfy WCAG 4.1.2.
+func WithTaskListItemWrapLabel(wrap ...bool) TaskListItemHTMLRendererOption {
+	v := true
+	if len(wrap) > 0 {
+		v = wrap[0]
+	}
+	return &withTaskListItemWrapLabel{value: v}
+}
+
+// WithWrapLabel is an alias for WithTaskListItemWrapLabel.
+func WithWrapLabel(wrap ...bool) TaskListItemHTMLRendererOption {
+	return WithTaskListItemWrapLabel(wrap...)
+}
+
+// WithAccessibleLabel is an alias for WithTaskListItemWrapLabel.
+func WithAccessibleLabel(wrap ...bool) TaskListItemHTMLRendererOption {
+	return WithTaskListItemWrapLabel(wrap...)
 }
 
 type taskListItemHTMLRendererExtension struct {
@@ -164,16 +193,24 @@ func (r *taskListItemHTMLRendererExtension) RendererOptions(c *html.Config) []ht
 	}
 }
 
-func (r *taskListItemHTMLRendererExtension) renderInputTag(w util.BufWriter, status TaskStatus) {
+func (r *taskListItemHTMLRendererExtension) renderInputTag(w util.BufWriter, status TaskStatus, hasText bool) {
 	if status == TaskStatusCompleted {
 		_, _ = w.WriteString(`<input checked="" disabled="" type="checkbox"`)
 	} else {
 		_, _ = w.WriteString(`<input disabled="" type="checkbox"`)
 	}
 	if r.config.XHTML {
-		_, _ = w.WriteString(" /> ")
+		if !hasText && r.config.WrapLabel {
+			_, _ = w.WriteString(" />")
+		} else {
+			_, _ = w.WriteString(" /> ")
+		}
 	} else {
-		_, _ = w.WriteString("> ")
+		if !hasText && r.config.WrapLabel {
+			_, _ = w.WriteString(">")
+		} else {
+			_, _ = w.WriteString("> ")
+		}
 	}
 }
 
@@ -218,9 +255,17 @@ func (r *taskListItemHTMLRendererExtension) renderParagraph(
 	// Task paragraph rendering.
 	if inTight {
 		if entering {
-			r.renderInputTag(w, status)
-		} else if n.NextSibling() != nil && n.FirstChild() != nil {
-			_ = w.WriteByte('\n')
+			if r.config.WrapLabel {
+				_, _ = w.WriteString("<label>")
+			}
+			r.renderInputTag(w, status, n.HasChildren())
+		} else {
+			if r.config.WrapLabel {
+				_, _ = w.WriteString("</label>")
+			}
+			if n.NextSibling() != nil && n.FirstChild() != nil {
+				_ = w.WriteByte('\n')
+			}
 		}
 		return gast.WalkContinue, nil
 	}
@@ -232,8 +277,14 @@ func (r *taskListItemHTMLRendererExtension) renderParagraph(
 		} else {
 			_, _ = w.WriteString("<p>")
 		}
-		r.renderInputTag(w, status)
+		if r.config.WrapLabel {
+			_, _ = w.WriteString("<label>")
+		}
+		r.renderInputTag(w, status, n.HasChildren())
 	} else {
+		if r.config.WrapLabel {
+			_, _ = w.WriteString("</label>")
+		}
 		_, _ = w.WriteString("</p>\n")
 	}
 	return gast.WalkContinue, nil
