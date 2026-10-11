@@ -128,11 +128,36 @@ func (s *taskListItemParser) CloseBlock(_ gast.Node, _ parser.Context) {
 type taskListItemHTMLRendererConfig struct {
 	XHTML              bool
 	IsInTightBlockFunc html.IsInTightBlockFunc
+	WrapLabel          bool
 }
 
 // TaskListItemHTMLRendererOption represents an option for configuring the task list item HTML renderer.
 type TaskListItemHTMLRendererOption interface {
 	applyTaskListItemHTMLRendererOption(*taskListItemHTMLRendererConfig)
+}
+
+type withTaskListItemWrapLabel struct {
+	value bool
+}
+
+func (o *withTaskListItemWrapLabel) applyTaskListItemHTMLRendererOption(c *taskListItemHTMLRendererConfig) {
+	c.WrapLabel = o.value
+}
+
+// WithTaskListItemWrapLabel returns an option that indicates whether checkboxes and task list item
+// texts are wrapped in <label> elements conforming to WCAG 4.1.2.
+func WithTaskListItemWrapLabel(wrap bool) TaskListItemHTMLRendererOption {
+	return &withTaskListItemWrapLabel{value: wrap}
+}
+
+// WithTaskListWrapLabel is an alias for WithTaskListItemWrapLabel.
+func WithTaskListWrapLabel(wrap bool) TaskListItemHTMLRendererOption {
+	return WithTaskListItemWrapLabel(wrap)
+}
+
+// WithWrapLabel is an alias for WithTaskListItemWrapLabel.
+func WithWrapLabel(wrap bool) TaskListItemHTMLRendererOption {
+	return WithTaskListItemWrapLabel(wrap)
 }
 
 type taskListItemHTMLRendererExtension struct {
@@ -141,7 +166,9 @@ type taskListItemHTMLRendererExtension struct {
 
 // NewTaskListItemHTMLRenderer returns a new html.Extension for rendering task list items.
 func NewTaskListItemHTMLRenderer(opts ...TaskListItemHTMLRendererOption) html.Extension {
-	config := taskListItemHTMLRendererConfig{}
+	config := taskListItemHTMLRendererConfig{
+		WrapLabel: true,
+	}
 	for _, opt := range opts {
 		opt.applyTaskListItemHTMLRendererOption(&config)
 	}
@@ -164,16 +191,24 @@ func (r *taskListItemHTMLRendererExtension) RendererOptions(c *html.Config) []ht
 	}
 }
 
-func (r *taskListItemHTMLRendererExtension) renderInputTag(w util.BufWriter, status TaskStatus) {
+func (r *taskListItemHTMLRendererExtension) renderInputTag(w util.BufWriter, status TaskStatus, hasChildren bool) {
 	if status == TaskStatusCompleted {
 		_, _ = w.WriteString(`<input checked="" disabled="" type="checkbox"`)
 	} else {
 		_, _ = w.WriteString(`<input disabled="" type="checkbox"`)
 	}
 	if r.config.XHTML {
-		_, _ = w.WriteString(" /> ")
+		if !r.config.WrapLabel || hasChildren {
+			_, _ = w.WriteString(" /> ")
+		} else {
+			_, _ = w.WriteString(" />")
+		}
 	} else {
-		_, _ = w.WriteString("> ")
+		if !r.config.WrapLabel || hasChildren {
+			_, _ = w.WriteString("> ")
+		} else {
+			_, _ = w.WriteString(">")
+		}
 	}
 }
 
@@ -218,9 +253,17 @@ func (r *taskListItemHTMLRendererExtension) renderParagraph(
 	// Task paragraph rendering.
 	if inTight {
 		if entering {
-			r.renderInputTag(w, status)
-		} else if n.NextSibling() != nil && n.FirstChild() != nil {
-			_ = w.WriteByte('\n')
+			if r.config.WrapLabel {
+				_, _ = w.WriteString("<label>")
+			}
+			r.renderInputTag(w, status, n.HasChildren())
+		} else {
+			if r.config.WrapLabel {
+				_, _ = w.WriteString("</label>")
+			}
+			if n.NextSibling() != nil && n.FirstChild() != nil {
+				_ = w.WriteByte('\n')
+			}
 		}
 		return gast.WalkContinue, nil
 	}
@@ -232,8 +275,14 @@ func (r *taskListItemHTMLRendererExtension) renderParagraph(
 		} else {
 			_, _ = w.WriteString("<p>")
 		}
-		r.renderInputTag(w, status)
+		if r.config.WrapLabel {
+			_, _ = w.WriteString("<label>")
+		}
+		r.renderInputTag(w, status, n.HasChildren())
 	} else {
+		if r.config.WrapLabel {
+			_, _ = w.WriteString("</label>")
+		}
 		_, _ = w.WriteString("</p>\n")
 	}
 	return gast.WalkContinue, nil
