@@ -4,8 +4,8 @@
 - [x] bar
 //- - - - - - - - -//
 <ul>
-<li><input disabled="" type="checkbox"> foo</li>
-<li><input checked="" disabled="" type="checkbox"> bar</li>
+<li><label><input disabled="" type="checkbox"> foo</label></li>
+<li><label><input checked="" disabled="" type="checkbox"> bar</label></li>
 </ul>
 //= = = = = = = = = = = = = = = = = = = = = = = =//
 
@@ -19,13 +19,13 @@
 - [ ] bim
 //- - - - - - - - -//
 <ul>
-<li><input checked="" disabled="" type="checkbox"> foo
+<li><label><input checked="" disabled="" type="checkbox"> foo</label>
 <ul>
-<li><input disabled="" type="checkbox"> bar</li>
-<li><input checked="" disabled="" type="checkbox"> baz</li>
+<li><label><input disabled="" type="checkbox"> bar</label></li>
+<li><label><input checked="" disabled="" type="checkbox"> baz</label></li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> bim</li>
+<li><label><input disabled="" type="checkbox"> bim</label></li>
 </ul>
 //= = = = = = = = = = = = = = = = = = = = = = = =//
 
@@ -41,11 +41,12 @@
 //= = = = = = = = = = = = = = = = = = = = = = = =//
 
 
+
 4
 //- - - - - - - - -//
 + [x] [x]
 //- - - - - - - - -//
 <ul>
-<li><input checked="" disabled="" type="checkbox"> [x]</li>
+<li><label><input checked="" disabled="" type="checkbox"> [x]</label></li>
 </ul>
 //= = = = = = = = = = = = = = = = = = = = = = = =//
