@@ -269,6 +269,8 @@ type parseContext struct {
 	lastDelimiter  *Delimiter
 	openedBlocks   []Block
 
+	openerCounts delimiterOpenerCounts
+
 	inlineParsers *[256][]InlineParser
 }
 
@@ -343,6 +345,10 @@ func (p *parseContext) FirstDelimiter() *Delimiter {
 }
 
 func (p *parseContext) PushDelimiter(d *Delimiter) {
+	if d.CanOpen {
+		d.countedAsOpener = true
+		p.openerCounts.add(d.Char, 1)
+	}
 	if p.delimiters == nil {
 		p.delimiters = d
 		p.lastDelimiter = d
@@ -355,6 +361,10 @@ func (p *parseContext) PushDelimiter(d *Delimiter) {
 }
 
 func (p *parseContext) RemoveDelimiter(d *Delimiter) {
+	if d.countedAsOpener {
+		d.countedAsOpener = false
+		p.openerCounts.add(d.Char, -1)
+	}
 	if d.PreviousDelimiter == nil {
 		p.delimiters = d.NextDelimiter
 	} else {

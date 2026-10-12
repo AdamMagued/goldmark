@@ -52,6 +52,11 @@ type Delimiter struct {
 
 	// Processor is a DelimiterProcessor associated with this delimiter.
 	Processor DelimiterProcessor
+
+	// countedAsOpener records whether PushDelimiter counted this delimiter
+	// in parseContext.openerCounts, so RemoveDelimiter undoes the same count
+	// even if CanOpen changes in between.
+	countedAsOpener bool
 }
 
 // Inline implements Inline.Inline.
@@ -179,7 +184,7 @@ func ParseDelimiter(block text.Reader, minimum int, processor DelimiterProcessor
 	}
 
 	// Fast path: simple emphasis
-	if canOpen && j >= minimum && (!canClose || !hasSameCharOpener(pc, c)) {
+	if canOpen && j >= minimum {
 		if fast := parseSimpleDelimitedText(block, line, segment, c, j, canOpen, canClose,
 			processor, pc); fast != nil {
 			return fast
@@ -201,6 +206,11 @@ func parseSimpleDelimitedText(block text.Reader, line []byte, segment text.Segme
 	}
 	pctx, ok := pc.(*parseContext)
 	if !ok || pctx.inlineParsers == nil {
+		return nil
+	}
+	// A delimiter that can also close may close an earlier opener of the
+	// same character, which only the standard path handles.
+	if canClose && pctx.openerCounts.get(c) > 0 {
 		return nil
 	}
 	parsers := pctx.inlineParsers
@@ -363,13 +373,45 @@ func ParseDelimiterSimple(block text.Reader, minimum int, processor DelimiterPro
 	return node
 }
 
-func hasSameCharOpener(pc Context, c byte) bool {
-	for d := pc.FirstDelimiter(); d != nil; d = d.NextDelimiter {
-		if d.Char == c && d.CanOpen {
-			return true
+// delimiterOpenerCounts tracks the number of active opening delimiters by delimiter character.
+// Most documents use few distinct delimiter characters, so the first entries are stored
+// in a fixed inline array to avoid allocations, falling back to an overflow map when needed.
+type delimiterOpenerCounts struct {
+	chars    [4]byte
+	counts   [4]int
+	length   int
+	overflow map[byte]int
+}
+
+func (d *delimiterOpenerCounts) get(char byte) int {
+	for i, c := range d.chars[:d.length] {
+		if c == char {
+			return d.counts[i]
 		}
 	}
-	return false
+	if d.overflow == nil {
+		return 0
+	}
+	return d.overflow[char]
+}
+
+func (d *delimiterOpenerCounts) add(char byte, delta int) {
+	for i, c := range d.chars[:d.length] {
+		if c == char {
+			d.counts[i] += delta
+			return
+		}
+	}
+	if d.length < len(d.chars) {
+		d.chars[d.length] = char
+		d.counts[d.length] = delta
+		d.length++
+		return
+	}
+	if d.overflow == nil {
+		d.overflow = make(map[byte]int)
+	}
+	d.overflow[char] += delta
 }
 
 func runeClass(r rune) (isSpace, isPunct bool) {
@@ -459,6 +501,7 @@ func ProcessDelimiters(bottom ast.Node, pc Context) {
 	}
 
 	var openersBottom delimiterOpenersBottoms
+	pctx, _ := pc.(*parseContext)
 
 	for closer != nil {
 		if !closer.CanClose {
@@ -467,6 +510,16 @@ func ProcessDelimiters(bottom ast.Node, pc Context) {
 		}
 		idx := delimiterClassIndex(closer.Char, closer.CanOpen, closer.Length%3)
 		lowerBound, hasLowerBound := openersBottom.get(idx)
+
+		if pctx != nil && pctx.openerCounts.get(closer.Char) == 0 {
+			next := closer.NextDelimiter
+			if !closer.CanOpen {
+				pc.RemoveDelimiter(closer)
+			}
+			openersBottom.set(idx, closer.Value.Index().Start)
+			closer = next
+			continue
+		}
 
 		consume := 0
 		found := false
