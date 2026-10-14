@@ -112,6 +112,8 @@ func (t *Segment) TrimLeftSpace(buffer []byte) Segment {
 
 // TrimLeftSpaceWidth returns a new segment by slicing off leading space
 // characters until the given width.
+//
+// Deprecated: This method does not handle tabs correctly.
 func (t *Segment) TrimLeftSpaceWidth(width int, buffer []byte) Segment {
 	padding := t.Padding
 	for ; width > 0; width-- {
